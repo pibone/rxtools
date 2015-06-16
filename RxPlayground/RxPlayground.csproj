@@ -90,7 +90,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\RxPlayground.Portable\RxTools.csproj">
+    <ProjectReference Include="..\RxTools\RxTools.csproj">
       <Project>{E5BEB523-EB54-477D-9FE2-1A3EFB683177}</Project>
       <Name>RxTools</Name>
     </ProjectReference>
