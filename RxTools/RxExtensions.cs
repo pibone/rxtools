@@ -3,7 +3,6 @@ using System.Reactive;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
-using System.Reactive.Subjects;
 using RxTools.IO;
 
 namespace RxTools
@@ -19,8 +18,8 @@ namespace RxTools
 		/// <returns>The source unmodified</returns>
 		public static IObservable<T> Dump<T>(this IObservable<T> source, IWriter writer, string tag)
 		{
-			writer.EnsureNotNull(nameof(writer));
-			tag.EnsureNotNull(nameof(tag));
+			writer.EnsureNotNull("writer");
+			tag.EnsureNotNull("tag");
 
 			return source
 				.Materialize()

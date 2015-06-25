@@ -93,8 +93,8 @@ namespace RxTools.IO
 
 		public void Write(string tag, string text)
 		{
-			tag.EnsureNotNull(nameof(tag));
-			text.EnsureNotNull(nameof(text));
+			tag.EnsureNotNull("tag");
+			text.EnsureNotNull("text");
 
 			tag = tag.Trim();
 			if (!string.IsNullOrWhiteSpace(tag)) tag = tag + " ";
