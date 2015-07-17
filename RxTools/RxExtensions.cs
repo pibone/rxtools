@@ -137,31 +137,47 @@ namespace RxTools
 		/// <returns>The modified source</returns>
 		public static IObservable<T> FinallyAlways<T>(this IObservable<T> source, Action finallyAction)
 		{
-			return FinallyAlways(source, finallyAction, Scheduler.Default);
-		}
-
-		/// <summary>
-		/// Executes a finally at any case when subscribing the source
-		/// </summary>
-		/// <param name="source">The main source to wrap</param>
-		/// <param name="finallyAction">The finally action</param>
-		/// <param name="scheduler">An scheduler where execute this action</param>
-		/// <returns>The modified source</returns>
-		public static IObservable<T> FinallyAlways<T>(this IObservable<T> source, Action finallyAction, IScheduler scheduler)
-        {
-			source.EnsureNotNull("source");
-			scheduler.EnsureNotNull("scheduler");
-
 			return Observable.Create<T>(o =>
-			{
-				return scheduler.Schedule(0,
-					(s, st) =>
-					{
-						try { return source.Subscribe(o); }
-						finally { finallyAction(); }
-					});
-			});
+                {
+                var finallyOnce = Disposable.Create(finallyAction);
+                var subscription = source.Subscribe(
+                    o.OnNext,
+                    ex =>
+                    {
+                        try { o.OnError(ex); }
+                        finally { finallyOnce.Dispose(); }
+                    },
+                    () =>
+                    {
+                        try { o.OnCompleted(); }
+                        finally { finallyOnce.Dispose(); }
+                    });
+                return new CompositeDisposable(subscription, finallyOnce);
+            });
 		}
+
+//		/// <summary>
+//		/// Executes a finally at any case when subscribing the source
+//		/// </summary>
+//		/// <param name="source">The main source to wrap</param>
+//		/// <param name="finallyAction">The finally action</param>
+//		/// <param name="scheduler">An scheduler where execute this action</param>
+//		/// <returns>The modified source</returns>
+//		public static IObservable<T> FinallyAlways<T>(this IObservable<T> source, Action finallyAction, IScheduler scheduler)
+//        {
+//			source.EnsureNotNull("source");
+//			scheduler.EnsureNotNull("scheduler");
+//
+//			return Observable.Create<T>(o =>
+//			{
+//				return scheduler.Schedule(0,
+//					(s, st) =>
+//					{
+//						try { return source.Subscribe(o); }
+//						finally { finallyAction(); }
+//					});
+//			});
+//		}
 
 		/// <summary>
 		/// Extension for start, load (charge) and release a trigger based on a given observable source.
