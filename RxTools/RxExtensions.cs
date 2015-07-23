@@ -232,41 +232,63 @@ namespace RxTools
 			triggerReleaseSelector.EnsureNotNull("triggerReleaseSelector");
 			scheduler.EnsureNotNull("scheduler");
 
-			return Observable.Create<Unit>(o =>
-            {
-	            return scheduler.Schedule(
+		    return Observable.Create<Unit>(o =>
+		    {
+		        return scheduler.Schedule(
 		            0, (s, st) =>
 		            {
-			            var refCountedSource = source.Publish().RefCount();
-						return refCountedSource
-							.Window(refCountedSource.Where(triggerStartSelector), t => triggerReleaseSelector(refCountedSource.Merge(Observable.Return(t))))
-							.Subscribe(trigger =>
-							{
-								var triggerDisposable = new CompositeDisposable();
+		                var refCountedSource = source.Publish().RefCount();
+		                return refCountedSource
+		                    .Window(refCountedSource.Where(triggerStartSelector),
+		                        t => triggerReleaseSelector(refCountedSource.Merge(Observable.Return(t))))
+		                    .Subscribe(trigger =>
+		                    {
+		                        var triggerDisposable = new CompositeDisposable();
 
-								triggerDisposable.Add(trigger
-									.Subscribe(_ => { }, () =>
-									{
-										o.OnNext(Unit.Default);
-										triggerDisposable.Dispose();
-									}));
-								triggerDisposable.Add(triggerCancelSelector(trigger)
-									.FirstOrDefaultAsync()
-									.Subscribe(_ =>
-									{
-										triggerDisposable.Dispose();
-									}));
-								if (cancelPreviousOnTriggerStart)
-									triggerDisposable.Add(trigger.Where(triggerStartSelector)
-										.Skip(1)
-										.Subscribe(_ =>
-										{
-											triggerDisposable.Dispose();
-										}));
-							});
-					});
-			});
-				
-		} 
+		                        triggerDisposable.Add(trigger
+		                            .Subscribe(_ => { }, () =>
+		                            {
+		                                o.OnNext(Unit.Default);
+		                                triggerDisposable.Dispose();
+		                            }));
+		                        triggerDisposable.Add(triggerCancelSelector(trigger)
+		                            .FirstOrDefaultAsync()
+		                            .Subscribe(_ =>
+		                            {
+		                                triggerDisposable.Dispose();
+		                            }));
+		                        if (cancelPreviousOnTriggerStart)
+		                            triggerDisposable.Add(trigger.Where(triggerStartSelector)
+		                                .Skip(1)
+		                                .Subscribe(_ =>
+		                                {
+		                                    triggerDisposable.Dispose();
+		                                }));
+		                    });
+		            });
+		    });
+
+		}
+
+        private class GroupedObservable<TKey, TElement> : IGroupedObservable<TKey, TElement>
+        {
+            private readonly IObservable<TElement> _o;
+            private readonly TKey _key;
+
+            public TKey Key { get { return _key; } }
+
+            public GroupedObservable(TKey key, IObservable<TElement> o)
+            {
+                _key = key;
+                _o = o;
+            }
+
+            public IDisposable Subscribe(IObserver<TElement> observer) { return _o.Subscribe(observer); }
+        }
+
+        public static IGroupedObservable<TKey, TSource> ConvertToGroup<TKey, TSource>(this IObservable<TSource> source, TKey key)
+        {
+            return new GroupedObservable<TKey, TSource>(key, source);
+        }
 	}
 }
