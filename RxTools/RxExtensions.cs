@@ -3,6 +3,7 @@ using System.Reactive;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using System.Threading;
 using RxTools.IO;
 
 namespace RxTools
@@ -219,6 +220,7 @@ namespace RxTools
 		/// <param name="scheduler">An scheduler where execute this action</param>
 		/// <param name="cancelPreviousOnTriggerStart">if true, closes (all) the previous started triggers based on triggerStartSelect.OnNext passing the trigger observed data since started</param>
 		/// <returns>Returns an Unit in the sequence each time the trigger is released</returns>
+		[Obsolete("Please use the Trigger with a TriggerOptions enum")]
 		public static IObservable<Unit> Trigger<T, TDontCare1, TDontCare2>(this IObservable<T> source,
 			Func<T, bool> triggerStartSelector, 
 			Func<IObservable<T>, IObservable<TDontCare1>> triggerCancelSelector,
@@ -269,6 +271,79 @@ namespace RxTools
 		    });
 
 		}
+
+	    public enum TriggerOptions
+	    {
+	        CancelPreviousOnTriggerStart,
+            IndependentTriggers,
+            DiscardTriggerIfAlreadyStarted
+	    }
+
+        /// <summary>
+		/// Extension for start, load (charge) and release a trigger based on a given observable source.
+		/// </summary>
+		/// <param name="source">The main source for the trigger</param>
+		/// <param name="triggerStartSelector">Pass the source itself to the lambda -> OnNext opens a new trigger charging</param>
+		/// <param name="triggerCancelSelector">Pass the trigger observed data since started to the lambda -> OnNext cancels (all) the previous started charges</param>
+		/// <param name="triggerReleaseSelector">Pass the source itself to the lambda -> OnNext release the charged trigger</param>
+		/// <param name="scheduler">An scheduler where execute this action</param>
+		/// <param name="cancelPreviousOnTriggerStart">if true, closes (all) the previous started triggers based on triggerStartSelect.OnNext passing the trigger observed data since started</param>
+		/// <returns>Returns an Unit in the sequence each time the trigger is released</returns>
+		public static IObservable<Unit> Trigger<T, TDontCare1, TDontCare2>(this IObservable<T> source,
+            Func<T, bool> triggerStartSelector,
+            Func<IObservable<T>, IObservable<TDontCare1>> triggerCancelSelector,
+            Func<IObservable<T>, IObservable<TDontCare2>> triggerReleaseSelector,
+            IScheduler scheduler,
+            TriggerOptions triggerOptions)
+        {
+            source.EnsureNotNull("source");
+            triggerCancelSelector.EnsureNotNull("triggerCancelSelector");
+            triggerStartSelector.EnsureNotNull("triggerStartSelector");
+            triggerReleaseSelector.EnsureNotNull("triggerReleaseSelector");
+            scheduler.EnsureNotNull("scheduler");
+
+            return Observable.Create<Unit>(o =>
+            {
+                return scheduler.Schedule(
+                    0, (s, st) =>
+                    {
+                        var isStarted = 1; // 0: true __ 1: false
+                        var refCountedSource = source.Publish().RefCount();
+                        return refCountedSource
+                            .Window(refCountedSource.Where(el => triggerStartSelector(el)
+                                // No start if it is already started
+                                && (triggerOptions == TriggerOptions.DiscardTriggerIfAlreadyStarted ? Interlocked.Exchange(ref isStarted, 0) == 0 : true)),
+                                t => triggerReleaseSelector(refCountedSource.Merge(Observable.Return(t))))
+                            .Subscribe(trigger =>
+                            {
+                                var triggerDisposable = new CompositeDisposable();
+
+                                triggerDisposable.Add(trigger
+                                    .Subscribe(_ => { }, () =>
+                                    {
+                                        Interlocked.Exchange(ref isStarted, 1);
+                                        o.OnNext(Unit.Default);
+                                        triggerDisposable.Dispose();
+                                    }));
+                                triggerDisposable.Add(triggerCancelSelector(trigger)
+                                    .FirstOrDefaultAsync()
+                                    .Subscribe(_ =>
+                                    {
+                                        Interlocked.Exchange(ref isStarted, 1);
+                                        triggerDisposable.Dispose();
+                                    }));
+                                if (triggerOptions == TriggerOptions.CancelPreviousOnTriggerStart)
+                                    triggerDisposable.Add(trigger.Where(triggerStartSelector)
+                                        .Skip(1)
+                                        .Subscribe(_ =>
+                                        {
+                                            triggerDisposable.Dispose();
+                                        }));
+                            });
+                    });
+            });
+
+        }
 
         private class GroupedObservable<TKey, TElement> : IGroupedObservable<TKey, TElement>
         {
