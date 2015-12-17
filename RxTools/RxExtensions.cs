@@ -8,7 +8,14 @@ using RxTools.IO;
 
 namespace RxTools
 {
-	public static class RxExtensions
+    public enum TriggerOptions
+    {
+        CancelPreviousOnTriggerStart,
+        IndependentTriggers,
+        DiscardTriggerIfAlreadyStarted
+    }
+
+    public static class RxExtensions
 	{
 		/// <summary>
 		/// Dumps the sequence data into a IWriter
@@ -272,12 +279,25 @@ namespace RxTools
 
 		}
 
-	    public enum TriggerOptions
-	    {
-	        CancelPreviousOnTriggerStart,
-            IndependentTriggers,
-            DiscardTriggerIfAlreadyStarted
-	    }
+        public static IObservable<Unit> Trigger<T, TDontCare1>(
+            this IObservable<T> source,
+            Func<T, bool> triggerStartSelector,
+            Func<IObservable<T>, IObservable<TDontCare1>> triggerCancelSelector,
+            Func<TimeSpan> releaseTimeSelector,
+            IScheduler scheduler,
+            TriggerOptions triggerOptions)
+        {
+            releaseTimeSelector.EnsureNotNull("releaseTimeSelector");
+            scheduler.EnsureNotNull("scheduler");
+
+            return source
+                .Trigger(
+                    triggerStartSelector, triggerCancelSelector,
+                    s => s.Throttle(releaseTimeSelector(), scheduler),
+                    scheduler,
+                    triggerOptions
+                );
+        }
 
         /// <summary>
 		/// Extension for start, load (charge) and release a trigger based on a given observable source.
